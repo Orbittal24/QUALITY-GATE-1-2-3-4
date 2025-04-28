@@ -1,0 +1,272 @@
+
+'use client'
+import React, { useState } from 'react';
+import { Button, Modal, ModalHeader, ModalBody, ModalFooter, Table } from 'reactstrap';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import { FaPlus, FaTimes, FaCheckSquare } from 'react-icons/fa';
+import axios from 'axios';
+
+function ModalFullscreenExample() {
+  const [modal, setModal] = useState(false);
+  const [columns, setColumns] = useState<string[]>(['First Name', 'Last Name', 'Username']);
+  const [rows, setRows] = useState<{ [key: string]: string | 'check' | 'cross' | 'both' }[]>([
+    { 'First Name': 'Mark', 'Last Name': 'Otto', Username: '@mdo' },
+    { 'First Name': 'Jacob', 'Last Name': 'Thornton', Username: '@fat' },
+    { 'First Name': 'Larry', 'Last Name': 'the Bird', Username: '@twitter' }
+  ]);
+  const [minMaxRange, setMinMaxRange] = useState<{ min?: number; max?: number }>({ min: undefined, max: undefined });
+  const [selectedCell, setSelectedCell] = useState<{ rowIndex: number, column: string } | null>(null);
+  const [isDualCheckboxMode, setIsDualCheckboxMode] = useState(false);
+  const [rangeModal, setRangeModal] = useState(false);
+  const [ranges, setRanges] = useState<{ [key: string]: { min: number; max: number } }>({});
+
+  const toggle = () => setModal(!modal);
+  const toggleRangeModal = () => setRangeModal(!rangeModal);
+
+  const addColumn = () => {
+    const newColumn = prompt('Enter column name:');
+    if (newColumn) {
+      setColumns([...columns, newColumn]);
+      setRows(rows.map(row => ({ ...row, [newColumn]: '' })));
+    }
+  };
+
+  const removeColumn = (columnToRemove: string) => {
+    setColumns(columns.filter(column => column !== columnToRemove));
+    setRows(rows.map(row => {
+      const newRow = { ...row };
+      delete newRow[columnToRemove];
+      return newRow;
+    }));
+  };
+
+  const addRow = () => {
+    const newRow: { [key: string]: string | 'check' | 'cross' | 'both' } = {};
+    columns.forEach(column => newRow[column] = '');
+    setRows([...rows, newRow]);
+  };
+
+  const removeRow = (index: number) => {
+    setRows(rows.filter((_, rowIndex) => rowIndex !== index));
+  };
+
+  const handleInputChange = (rowIndex: number, column: string, value: string | 'check' | 'cross' | 'both') => {
+    const newRows = [...rows];
+    newRows[rowIndex][column] = value;
+    setRows(newRows);
+  };
+
+  // const createTable = () => {
+  //   localStorage.setItem('columns', JSON.stringify(columns));
+  //   localStorage.setItem('rows', JSON.stringify(rows));
+  //   alert('Table created permanently!');
+  // };
+  const createTable = async () => {
+    try {
+      const response = await axios.post('/api/createTable', {
+        columns,
+        rows
+      });
+      if (response.status === 200) {
+        alert('Table created permanently!');
+      }
+    } catch (error) {
+      console.error('Error creating table:', error);
+      alert('Failed to create table.');
+    }
+  };
+
+  
+  const toggleDualCheckboxMode = () => {
+    setIsDualCheckboxMode(!isDualCheckboxMode);
+  };
+
+  const handleCheckboxClick = (rowIndex: number, column: string, type: 'check' | 'cross') => {
+    if (type === 'check') {
+      handleInputChange(rowIndex, column, 'check');
+    } else if (type === 'cross') {
+      handleInputChange(rowIndex, column, 'cross');
+    }
+  };
+
+  const handleCellClick = (rowIndex: number, column: string) => {
+    if (isDualCheckboxMode) {
+      handleInputChange(rowIndex, column, 'both');
+    } else {
+      setSelectedCell({ rowIndex, column });
+      setMinMaxRange({ min: undefined, max: undefined }); // Reset minMaxRange when a new cell is selected
+    }
+  };
+
+  const handleMinMaxRangeChange = (event: React.ChangeEvent<HTMLInputElement>, type: 'min' | 'max') => {
+    const value = parseInt(event.target.value);
+    if (!isNaN(value)) {
+      setMinMaxRange(prev => ({
+        ...prev,
+        [type]: value
+      }));
+    }
+  };
+
+  const applyRange = () => {
+    if (minMaxRange.min !== undefined && minMaxRange.max !== undefined && selectedCell) {
+      const { rowIndex, column } = selectedCell;
+      const key = `${rowIndex}-${column}`;
+      setRanges(prev => ({
+        ...prev,
+        [key]: { min: minMaxRange.min!, max: minMaxRange.max! }
+      }));
+      handleInputChange(rowIndex, column, '');
+      toggleRangeModal();
+    }
+  };
+
+  const handleSetRangeClick = () => {
+    if (selectedCell) {
+      setRangeModal(true);
+    } else {
+      alert('Please select a cell to set the range.');
+    }
+  };
+
+  return (
+    <div>
+      <Button color="danger" onClick={toggle}>
+        Click Me
+      </Button>
+      <Modal isOpen={modal} toggle={toggle} fullscreen>
+        <ModalHeader toggle={toggle}>Modal title</ModalHeader>
+        <ModalBody>
+          <Table striped bordered>
+            <thead>
+              <tr>
+                <th>#</th>
+                {columns.map((column, colIndex) => (
+                  <th key={colIndex}>
+                    {column} 
+                    <Button close onClick={() => removeColumn(column)}><FaTimes color="blue" /></Button>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  <th scope="row">
+                    {rowIndex + 1} 
+                    <Button close onClick={() => removeRow(rowIndex)}><FaTimes color="blue" /></Button>
+                  </th>
+                  {columns.map((column, colIndex) => (
+                    <td key={colIndex} onClick={() => handleCellClick(rowIndex, column)}>
+                      {row[column] === 'both' ? (
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input
+                            type="checkbox"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCheckboxClick(rowIndex, column, 'check');
+                            }}
+                          />
+                          <FaCheckSquare color="green" style={{ marginRight: '10px' }} />
+                          <input
+                            type="checkbox"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCheckboxClick(rowIndex, column, 'cross');
+                            }}
+                          />
+                          <FaTimes color="red" />
+                        </div>
+                      ) : row[column] === 'check' ? (
+                        <FaCheckSquare color="green" />
+                      ) : row[column] === 'cross' ? (
+                        <FaTimes color="red" />
+                      ) : (
+                        selectedCell && selectedCell.rowIndex === rowIndex && selectedCell.column === column ? (
+                          <div>
+                            <input
+                              type="number"
+                              value={row[column] as string}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                const key = `${rowIndex}-${column}`;
+                                const range = ranges[key];
+                                if (range) {
+                                  const numValue = parseInt(value);
+                                  if (!isNaN(numValue) && numValue >= range.min && numValue <= range.max) {
+                                    handleInputChange(rowIndex, column, value);
+                                  }
+                                } else {
+                                  handleInputChange(rowIndex, column, value);
+                                }
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <span>{row[column]}</span>
+                        )
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '20px' }}>
+            <Button color="primary" onClick={addColumn}><FaPlus /> Add Column</Button>
+            <Button color="primary" onClick={addRow}><FaPlus /> Add Row</Button>
+            <Button color={isDualCheckboxMode ? "success" : "secondary"} onClick={toggleDualCheckboxMode}>
+              {isDualCheckboxMode ? 'Checkbox Mode Active' : 'Enter Checkbox Mode'}
+            </Button>
+            <Button color="primary" onClick={handleSetRangeClick}><FaPlus /> Set Range</Button>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button color="primary" onClick={createTable}>
+            Create
+          </Button>{' '}
+          <Button color="secondary" onClick={toggle}>
+            Cancel
+          </Button>
+        </ModalFooter>
+      </Modal>
+      
+      <Modal isOpen={rangeModal} toggle={toggleRangeModal}>
+        <ModalHeader toggle={toggleRangeModal}>Set Range</ModalHeader>
+        <ModalBody>
+          <div>
+            Min: 
+            
+              <input
+              type="number"
+              value={minMaxRange.min !== undefined ? minMaxRange.min : ''}
+              onChange={(e) => handleMinMaxRangeChange(e, 'min')}
+            />
+          </div>
+          <div>
+            Max: 
+            <input
+              type="number"
+              value={minMaxRange.max !== undefined ? minMaxRange.max : ''}
+              onChange={(e) => handleMinMaxRangeChange(e, 'max')}
+            />
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button color="primary" onClick={applyRange}>
+            Apply
+          </Button>{' '}
+          <Button color="secondary" onClick={toggleRangeModal}>
+            Cancel
+          </Button>
+        </ModalFooter>
+      </Modal>
+    </div>
+  );
+}
+
+export default ModalFullscreenExample;
+
+
+
+

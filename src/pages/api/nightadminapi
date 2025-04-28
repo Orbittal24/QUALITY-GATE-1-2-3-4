@@ -1,0 +1,127 @@
+import sql from 'mssql';
+
+const sqlConfig = {
+  user: "admin9",
+  password: "admin9",
+  database: "REplus",
+  server: "DESKTOP-5UJJEQ0",
+  options: {
+    encrypt: false,
+    trustServerCertificate: true,
+  }
+};
+
+const createChecklistTable = async (packName, checklistName, headers) => {
+  const tableName = `[${packName}_${checklistName}]`;
+  const columnsDefinitions = headers
+    .map(header => `[${header}] NVARCHAR(MAX)`)
+    .join(', ');
+
+  const createTableQuery = `
+    CREATE TABLE ${tableName} (
+      [Sr_No] INT IDENTITY(1,1) PRIMARY KEY,
+      [CustomerQRCode] NVARCHAR(MAX),
+      [BatteryPackName] NVARCHAR(MAX),
+      [CheckedBy] NVARCHAR(MAX),
+      ${columnsDefinitions},
+      [Status] NVARCHAR(MAX),
+      [DateTime] DATETIME,
+      [PreviouslyUsedBy] NVARCHAR(MAX)  -- New column
+    );
+  `;
+  await sql.query(createTableQuery);
+
+  const insertTableNameQuery = `INSERT INTO Mst_ChecklistMaster (TableName) VALUES ('${tableName}');`;
+  await sql.query(insertTableNameQuery);
+
+  return tableName;
+};
+
+export default async function handler(req, res) {
+  try {
+    await sql.connect(sqlConfig);
+
+    if (req.method === 'POST') {
+      const { ChecklistName, PackName, tableData, customerQRCode, batteryPackName, checkedBy } = req.body;
+      if (!PackName || !tableData) {
+        return res.status(400).json({ message: 'PackName and tableData are required' });
+      }
+
+      const headers = tableData[0];
+      const dataRows = tableData.slice(1);
+
+      const createdTableName = await createChecklistTable(PackName, ChecklistName, headers);
+
+      for (const row of dataRows) {
+        const transformedRow = row.map(value => {
+          if (typeof value === 'object' && value !== null) {
+            if (value.min !== undefined && value.max !== undefined) {
+              return `Range: ${value.min}-${value.max}`;
+            } else if (value.OK !== undefined || value['Not OK'] !== undefined) {
+              if (value.OK) {
+                return 'Checkbox: OK';
+              } else if (value['Not OK']) {
+                return 'Checkbox: Not OK';
+              } else {
+                return 'Checkbox: OK, Not OK';
+              }
+            }
+          }
+          return value;
+        });
+
+        const insertDataQuery = `
+          INSERT INTO ${createdTableName} ([CustomerQRCode], [BatteryPackName], [CheckedBy], ${headers.map(header => `[${header}]`).join(', ')}, [Status], [DateTime], [PreviouslyUsedBy])
+          VALUES ('${customerQRCode}', '${batteryPackName}', '${checkedBy}', ${transformedRow.map(value => `'${value}'`).join(', ')}, 'Pending', GETDATE(), NULL);
+        `;
+        await sql.query(insertDataQuery);
+
+        console.log(`Inserted row into ${createdTableName}:`, transformedRow);
+      }
+
+      res.status(201).json({ ChecklistName, TableName: createdTableName });
+    } else if (req.method === 'GET') {
+      const { packName, tableName } = req.query;
+
+      if (packName) {
+        const customerQRCodeQuery = `SELECT CustomerQRCode, battery_pack_name FROM dbo.final_qrcode_details WHERE battery_pack_name = @queryPackName`;
+        const request = new sql.Request();
+        request.input('queryPackName', sql.NVarChar, packName);
+        const customerQRCodeResult = await request.query(customerQRCodeQuery);
+        const customerQRCode = customerQRCodeResult.recordset.length > 0 ? customerQRCodeResult.recordset[0].CustomerQRCode : null;
+        const batteryPackName = customerQRCodeResult.recordset.length > 0 ? customerQRCodeResult.recordset[0].battery_pack_name : null;
+
+        const tableNamesQuery = `SELECT TableName FROM dbo.Mst_ChecklistMaster WHERE TableName LIKE @searchPackName`;
+        request.input('searchPackName', sql.NVarChar, `%${packName}%`);
+        const tableNamesResult = await request.query(tableNamesQuery);
+        const tableNames = tableNamesResult.recordset.map(row => row.TableName);
+
+        return res.status(200).json({ tableNames, customerQRCode, batteryPackName });
+      }
+
+      if (tableName) {
+        const query = `SELECT * FROM ${tableName} WHERE [PreviouslyUsedBy] IS NULL OR [PreviouslyUsedBy] <> 'Updated'`;
+        const result = await sql.query(query);
+        return res.status(200).json({ tableData: result.recordset });
+      }
+
+      const packNamesQuery = 'SELECT battery_pack_name FROM dbo.final_qrcode_details';
+      const checklistsQuery = 'SELECT TableName FROM Mst_ChecklistMaster';
+      const packNamesResult = await sql.query(packNamesQuery);
+      const checklistsResult = await sql.query(checklistsQuery);
+
+      const packNames = packNamesResult.recordset.map(row => row.battery_pack_name);
+      const checklists = checklistsResult.recordset.map(row => row.TableName);
+
+      res.status(200).json({ packNames, checklists });
+    } else {
+      res.setHeader('Allow', ['POST', 'GET']);
+      res.status(405).end(`Method ${req.method} Not Allowed`);
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  } finally {
+    await sql.close();
+  }
+}

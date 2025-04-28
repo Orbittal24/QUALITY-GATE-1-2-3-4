@@ -1,0 +1,124 @@
+import sql from 'mssql';
+
+const sqlConfig = {
+  user: "admin9",
+  password: "admin9",
+  database: "REplus",
+  server: "DESKTOP-5UJJEQ0",
+  options: {
+    encrypt: false,
+    trustServerCertificate: true,
+  }
+};
+
+const createChecklistTable = async (packName, checklistName, headers) => {
+  const tableName = `[${packName}_${checklistName}]`;
+  const columnsDefinitions = headers
+    .map(header => `[${header}] NVARCHAR(50)`)
+    .join(', ');
+
+  const createTableQuery = `
+    CREATE TABLE ${tableName} (
+      [Sr_No] INT IDENTITY(1,1) PRIMARY KEY,
+      [PackNo] NVARCHAR(50),
+      [PackName] NVARCHAR(50),
+      [CheckedBy] NVARCHAR(50),
+      ${columnsDefinitions},
+      [DateTime] DATETIME
+    );
+  `;
+  await sql.query(createTableQuery);
+
+  const insertTableNameQuery = `INSERT INTO Mst_ChecklistMaster (TableName) VALUES ('${tableName}');`;
+  await sql.query(insertTableNameQuery);
+
+  return tableName;
+};
+
+export default async function handler(req, res) {
+  try {
+    await sql.connect(sqlConfig);
+
+    if (req.method === 'POST') {
+      const { ChecklistName, PackName, tableData, packNo, packName: bodyPackName, checkedBy } = req.body;
+      if (!PackName || !tableData) {
+        return res.status(400).json({ message: 'PackName and tableData are required' });
+      }
+
+      const headers = tableData[0];
+      const dataRows = tableData.slice(1);
+
+      const createdTableName = await createChecklistTable(PackName, ChecklistName, headers);
+
+      for (const row of dataRows) {
+        const transformedRow = row.map(value => {
+          if (typeof value === 'object' && value !== null) {
+            if (value.min !== undefined && value.max !== undefined) {
+              return `Range: ${value.min}-${value.max}`;
+            } else if (value.OK !== undefined || value['Not OK'] !== undefined) {
+              if (value.OK) {
+                return 'Checkbox: OK';
+              } else if (value['Not OK']) {
+                return 'Checkbox: Not OK';
+              } else {
+                return 'Checkbox: OK, Not OK';
+              }
+            }
+          }
+          return value;
+        });
+
+        const insertDataQuery = `
+          INSERT INTO ${createdTableName} ([PackNo], [PackName], [CheckedBy], ${headers.map(header => `[${header}]`).join(', ')}, [DateTime])
+          VALUES ('${packNo}', '${bodyPackName}', '${checkedBy}', ${transformedRow.map(value => `'${value}'`).join(', ')}, GETDATE());
+        `;
+        await sql.query(insertDataQuery);
+
+        console.log(`Inserted row into ${createdTableName}:`, transformedRow);
+      }
+
+      res.status(201).json({ ChecklistName, TableName: createdTableName });
+    } else if (req.method === 'GET') {
+      const { packName, tableName } = req.query;
+
+      if (packName) {
+        const packNoQuery = `SELECT Bt_PkNo FROM dbo.Mst_BatteryMaster WHERE Bt_Description = @queryPackName`;
+        const request = new sql.Request();
+        request.input('queryPackName', sql.NVarChar, packName);
+        const packNoResult = await request.query(packNoQuery);
+        const packNo = packNoResult.recordset.length > 0 ? packNoResult.recordset[0].Bt_PkNo : null;
+
+        const tableNamesQuery = `SELECT TableName FROM dbo.Mst_ChecklistMaster WHERE TableName LIKE @searchPackName`;
+        request.input('searchPackName', sql.NVarChar, `%${packName}%`);
+        const tableNamesResult = await request.query(tableNamesQuery);
+        const tableNames = tableNamesResult.recordset.map(row => row.TableName);
+
+        return res.status(200).json({ tableNames, packNo });
+      }
+
+      if (tableName) {
+        const query = `SELECT * FROM ${tableName}`;
+        const result = await sql.query(query);
+        return res.status(200).json({ tableData: result.recordset });
+      }
+
+      const packNamesQuery = 'SELECT Bt_Description FROM dbo.Mst_BatteryMaster';
+      const checklistsQuery = 'SELECT TableName FROM Mst_ChecklistMaster';
+      const packNamesResult = await sql.query(packNamesQuery);
+      const checklistsResult = await sql.query(checklistsQuery);
+
+      const packNames = packNamesResult.recordset.map(row => row.Bt_Description);
+      const checklists = checklistsResult.recordset.map(row => row.TableName);
+
+      res.status(200).json({ packNames, checklists });
+    } else {
+      res.setHeader('Allow', ['POST', 'GET']);
+      res.status(405).end(`Method ${req.method} Not Allowed`);
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  } finally {
+    await sql.close();
+  }
+}

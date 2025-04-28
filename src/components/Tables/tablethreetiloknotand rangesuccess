@@ -1,0 +1,233 @@
+import React, { useState, useEffect } from 'react';
+import { Dropdown, DropdownToggle, DropdownMenu, DropdownItem, Input, Alert, Table, Button } from 'reactstrap';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import axios from 'axios';
+
+// Define the type for the checklist data
+type ChecklistItem = {
+  Sr_No: number;
+  PackNo: string;
+  PackName: string;
+  CheckedBy: string;
+  DateTime: string;
+  [key: string]: string | { OK: boolean; 'Not OK': boolean } | number;
+};
+
+const TableThree: React.FC = () => {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [packName, setPackName] = useState<string>('');
+  const [packNo, setPackNo] = useState<string>('');
+  const [checkedBy, setCheckedBy] = useState<string>('');
+  const [tableNames, setTableNames] = useState<string[]>([]);
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [checklistData, setChecklistData] = useState<ChecklistItem[]>([]);
+  const [selectedTableName, setSelectedTableName] = useState<string>('');
+  const [rangeCells, setRangeCells] = useState<{ [key: string]: { min: number, max: number } }>({});
+
+  useEffect(() => {
+    const fetchTableNames = async () => {
+      try {
+        const response = await axios.get(`/api/adminchecklist?packName=${packName}`);
+        setTableNames(response.data.tableNames);
+        setPackNo(response.data.packNo); // Set the packNo from the response
+        setDropdownOpen(true); // Open the dropdown when results are fetched
+      } catch (error) {
+        console.error('Error fetching table names:', error);
+        setAlertMessage('Error fetching table names');
+      }
+    };
+
+    if (packName) {
+      fetchTableNames();
+    } else {
+      setDropdownOpen(false); // Close the dropdown if the pack name is cleared
+    }
+  }, [packName]);
+
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setPackName(event.target.value);
+  };
+
+  const handleSelectTableName = async (tableName: string) => {
+    try {
+      const response = await axios.get(`/api/adminchecklist?tableName=${tableName}`);
+      const data = response.data.tableData;
+      if (data.length > 0) {
+        setChecklistData(data);
+        setCheckedBy(data[0].CheckedBy || '');
+      }
+      setSelectedTableName(tableName);
+      setDropdownOpen(false);
+
+      // Identify the range cells and checkbox cells
+      const newRangeCells: { [key: string]: { min: number, max: number } } = {};
+      data.forEach((row: ChecklistItem, rowIndex: number) => {
+        Object.entries(row).forEach(([key, value]) => {
+          if (typeof value === 'string') {
+            if (value.startsWith('Range:')) {
+              const match = value.match(/Range: (\d+)-(\d+)/);
+              if (match) {
+                newRangeCells[`${rowIndex}-${key}`] = { min: parseInt(match[1], 10), max: parseInt(match[2], 10) };
+                row[key] = ''; // Clear the cell value for display
+              }
+            } else if (value === 'Checkbox: OK, Not OK') {
+              row[key] = { OK: false, 'Not OK': false };
+            }
+          }
+        });
+      });
+      setRangeCells(newRangeCells);
+    } catch (error) {
+      console.error('Error fetching checklist data:', error);
+      setAlertMessage('Error fetching checklist data');
+    }
+  };
+
+  const toggleDropdown = () => setDropdownOpen(prevState => !prevState);
+
+  const handleCellChange = (rowIndex: number, key: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    const updatedData = [...checklistData];
+    updatedData[rowIndex][key] = value;
+    setChecklistData(updatedData);
+  };
+
+  const handleCheckedByChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setCheckedBy(event.target.value);
+    const updatedData = checklistData.map((row) => ({ ...row, CheckedBy: event.target.value }));
+    setChecklistData(updatedData);
+  };
+
+  const handleCheckboxChange = (rowIndex: number, key: string, checkboxKey: 'OK' | 'Not OK') => {
+    const updatedData = [...checklistData];
+    updatedData[rowIndex][key] = checkboxKey === "OK" ? { OK: true, 'Not OK': false } : { OK: false, 'Not OK': true };
+    setChecklistData(updatedData);
+  };
+
+  const handleSubmit = async () => {
+    try {
+      const response = await axios.post('/api/usechecklist', {
+        tableName: selectedTableName,
+        tableData: checklistData,
+      });
+      if (response.status === 200) {
+        setAlertMessage('Data updated successfully');
+      } else {
+        setAlertMessage('Error updating data');
+      }
+    } catch (error) {
+      console.error('Error updating data:', error);
+      setAlertMessage('Error updating data');
+    }
+  };
+
+  return (
+    <div>
+      {alertMessage && <Alert color="danger">{alertMessage}</Alert>}
+      <Dropdown isOpen={dropdownOpen} toggle={toggleDropdown}>
+        <DropdownToggle tag="div" className="w-100">
+          <Input
+            type="text"
+            value={packName}
+            onChange={handleInputChange}
+            placeholder="Enter or scan pack name"
+            className="mb-3"
+          />
+        </DropdownToggle>
+        {tableNames.length > 0 && (
+          <DropdownMenu style={{ width: '100%' }}>
+            {tableNames.map((tableName, index) => (
+              <DropdownItem key={index} onClick={() => handleSelectTableName(tableName)}>
+                {tableName}
+              </DropdownItem>
+            ))}
+          </DropdownMenu>
+        )}
+      </Dropdown>
+
+      {selectedTableName && (
+        <div className="mt-3">
+          <h4>Checklist Data for {selectedTableName}</h4>
+          <div className="mb-3">
+            <Input
+              type="text"
+              value={packNo}
+              readOnly
+              placeholder="Pack No"
+              className="mb-3"
+            />
+            <Input
+              type="text"
+              value={packName}
+              readOnly
+              placeholder="Pack Name"
+              className="mb-3"
+            />
+            <Input
+              type="text"
+              value={checkedBy}
+              onChange={handleCheckedByChange}
+              placeholder="Checked By"
+              className="mb-3"
+            />
+          </div>
+          {checklistData.length > 0 ? (
+            <Table bordered>
+              <thead>
+                <tr>
+                  <th>Sr_No</th>
+                  {Object.keys(checklistData[0]).filter(key => key !== 'PackNo' && key !== 'PackName' && key !== 'DateTime' && key !== 'CheckedBy' && key !== 'Sr_No').map((key, index) => (
+                    <th key={index}>{key}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {checklistData.map((row, rowIndex) => (
+                  <tr key={rowIndex}>
+                    <td>{rowIndex + 1}</td>
+                    {Object.entries(row).filter(([key]) => key !== 'PackNo' && key !== 'PackName' && key !== 'DateTime' && key !== 'CheckedBy' && key !== 'Sr_No').map(([key, value], colIndex) => (
+                      <td key={colIndex}>
+                        {typeof value === 'object' && value !== null && ('OK' in value || 'Not OK' in value) ? (
+                          <div>
+                            <Input
+                              type="checkbox"
+                              checked={(value as { OK: boolean; 'Not OK': boolean }).OK}
+                              onChange={() => handleCheckboxChange(rowIndex, key, 'OK')}
+                            /> OK
+                            <Input
+                              type="checkbox"
+                              checked={(value as { OK: boolean; 'Not OK': boolean })['Not OK']}
+                              onChange={() => handleCheckboxChange(rowIndex, key, 'Not OK')}
+                            /> Not OK
+                          </div>
+                        ) : (
+                          <Input
+                            type="text"
+                            value={String(value)}
+                            onChange={(event) => handleCellChange(rowIndex, key, event)}
+                            style={{
+                              backgroundColor: rangeCells[`${rowIndex}-${key}`] && value !== ''
+                                ? (Number(value) >= rangeCells[`${rowIndex}-${key}`].min && Number(value) <= rangeCells[`${rowIndex}-${key}`].max) 
+                                  ? 'green' 
+                                  : 'red'
+                                : 'white'
+                            }}
+                          />
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          ) : (
+            <Alert color="warning">No data available for this checklist</Alert>
+          )}
+          <Button color="primary" onClick={handleSubmit} className="mt-3">Submit</Button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default TableThree;

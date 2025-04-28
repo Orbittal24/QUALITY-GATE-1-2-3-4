@@ -1,0 +1,152 @@
+'use client'
+
+import React, { useState, useEffect } from 'react';
+import { Dropdown, DropdownToggle, DropdownMenu, DropdownItem, Input, Alert, Table } from 'reactstrap';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import axios from 'axios';
+
+const TableThree: React.FC = () => {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [packName, setPackName] = useState<string>('');
+  const [packNo, setPackNo] = useState<string>('');
+  const [checkedBy, setCheckedBy] = useState<string>('');
+  const [tableNames, setTableNames] = useState<string[]>([]);
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [checklistData, setChecklistData] = useState<any[]>([]);
+  const [selectedTableName, setSelectedTableName] = useState<string>('');
+
+  useEffect(() => {
+    const fetchTableNames = async () => {
+      try {
+        const response = await axios.get(`/api/adminchecklist?packName=${packName}`);
+        setTableNames(response.data.tableNames);
+        setPackNo(response.data.packNo); // Set the packNo from the response
+        setDropdownOpen(true); // Open the dropdown when results are fetched
+      } catch (error) {
+        console.error('Error fetching table names:', error);
+        setAlertMessage('Error fetching table names');
+      }
+    };
+
+    if (packName) {
+      fetchTableNames();
+    } else {
+      setDropdownOpen(false); // Close the dropdown if the pack name is cleared
+    }
+  }, [packName]);
+
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setPackName(event.target.value);
+  };
+
+  const handleSelectTableName = async (tableName: string) => {
+    try {
+      const response = await axios.get(`/api/adminchecklist?tableName=${tableName}`);
+      const data = response.data.tableData;
+      if (data.length > 0) {
+        setChecklistData(data);
+        setCheckedBy(data[0].CheckedBy || '');
+      }
+      setSelectedTableName(tableName);
+      setDropdownOpen(false);
+    } catch (error) {
+      console.error('Error fetching checklist data:', error);
+      setAlertMessage('Error fetching checklist data');
+    }
+  };
+
+  const toggleDropdown = () => setDropdownOpen(prevState => !prevState);
+
+  const handleCellChange = (rowIndex: number, key: string, value: string) => {
+    const updatedData = [...checklistData];
+    updatedData[rowIndex][key] = value;
+    setChecklistData(updatedData);
+  };
+
+  return (
+    <div>
+      {alertMessage && <Alert color="danger">{alertMessage}</Alert>}
+      <Dropdown isOpen={dropdownOpen} toggle={toggleDropdown}>
+        <DropdownToggle tag="div" className="w-100">
+          <Input
+            type="text"
+            value={packName}
+            onChange={handleInputChange}
+            placeholder="Enter or scan pack name"
+            className="mb-3"
+          />
+        </DropdownToggle>
+        {tableNames.length > 0 && (
+          <DropdownMenu style={{ width: '100%' }}>
+            {tableNames.map((tableName, index) => (
+              <DropdownItem key={index} onClick={() => handleSelectTableName(tableName)}>
+                {tableName}
+              </DropdownItem>
+            ))}
+          </DropdownMenu>
+        )}
+      </Dropdown>
+
+      {selectedTableName && (
+        <div className="mt-3">
+          <h4>Checklist Data for {selectedTableName}</h4>
+          <div className="mb-3">
+            <Input
+              type="text"
+              value={packNo}
+              readOnly
+              placeholder="Pack No"
+              className="mb-3"
+            />
+            <Input
+              type="text"
+              value={packName}
+              readOnly
+              placeholder="Pack Name"
+              className="mb-3"
+            />
+            <Input
+              type="text"
+              value={checkedBy}
+              readOnly
+              placeholder="Checked By"
+              className="mb-3"
+            />
+          </div>
+          {checklistData.length > 0 ? (
+            <Table bordered>
+              <thead>
+                <tr>
+                  <th>Sr_No</th>
+                  {Object.keys(checklistData[0]).filter(key => key !== 'PackNo' && key !== 'PackName' && key !== 'DateTime' && key !== 'CheckedBy' && key !== 'Sr_No').map((key, index) => (
+                    <th key={index}>{key}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {checklistData.map((row, rowIndex) => (
+                  <tr key={rowIndex}>
+                    <td>{rowIndex + 1}</td>
+                    {Object.entries(row).filter(([key]) => key !== 'PackNo' && key !== 'PackName' && key !== 'DateTime' && key !== 'CheckedBy' && key !== 'Sr_No').map(([key, value], colIndex) => (
+                      <td key={colIndex}>
+                        <Input
+                          type="text"
+                          value={String(value)}
+                          onChange={(e) => handleCellChange(rowIndex, key, e.target.value)}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          ) : (
+            <Alert color="warning">No data available for this checklist</Alert>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default TableThree;
