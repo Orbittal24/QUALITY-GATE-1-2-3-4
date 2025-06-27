@@ -608,7 +608,7 @@ const TableThree: React.FC = () => {
     // Prepare the data with correct PackName
     const submitData = checklistData.map(item => ({
       ...item,
-      PackName: moduleBarcode ? moduleBarcode : batteryPackName
+      PackName: finalQRCode ? finalQRCode : finalQRCode
     }));
 
     const response = await axios.post('/api/usechecklist', {
