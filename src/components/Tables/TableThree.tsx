@@ -690,7 +690,7 @@ const TableThree: React.FC = () => {
         <DropdownToggle tag="div" className="w-100">
           <Input
             type="text"
-            value={batteryPackName}
+            value={finalQRCode}
             readOnly
             placeholder="Battery Pack Name"
             className="mb-3"
@@ -722,7 +722,7 @@ const TableThree: React.FC = () => {
             )}
             <Input
               type="text"
-              value={batteryPackName}
+              value={finalQRCode}
               readOnly
               placeholder="Battery Pack Name"
               className="mb-3"
