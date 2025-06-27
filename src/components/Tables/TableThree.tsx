@@ -606,18 +606,26 @@ const TableThree: React.FC = () => {
     try {
       console.log('Submitting checklist data for table:', selectedTableName);
     // Prepare the data with correct PackName
+    // Prepare the data with correct PackName
     const submitData = checklistData.map(item => ({
       ...item,
-      PackName: finalQRCode ? finalQRCode : finalQRCode
+      PackName: finalQRCode, // Use finalQRCode as PackName
+      CustomerQRCode: customerQRCode || null, // Include customerQRCode if available
+      FinalQRCode: finalQRCode, // Include finalQRCode
+      DateTime: new Date().toISOString(), // Add current timestamp
+      Status: item.Status || 'Pending' // Ensure Status has a value
     }));
+
+    console.log('Submitting data:', submitData); // Log the data being submitted
 
     const response = await axios.post('/api/usechecklist', {
       tableName: selectedTableName,
       tableData: submitData,
-      customerQRCode,
-      moduleBarcode
+      customerQRCode: customerQRCode || null,
+      moduleBarcode: moduleBarcode || null
     });
-      console.log('Submit response:', response);
+
+    console.log('Submit response:', response);
 
       if (response.status === 200) {
         setAlertMessage('Data updated successfully');
