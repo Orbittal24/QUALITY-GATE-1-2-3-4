@@ -23,7 +23,8 @@ export default async function handler(req, res) {
       for (const row of tableData) {
         const { Sr_No, ...rowData } = row;
         rowData.CustomerQRCode = customerQRCode || null;
-        rowData.BatteryPackName = rowData.BatteryPackName || moduleBarcode || null;
+        // rowData.BatteryPackName = rowData.BatteryPackName || moduleBarcode || null;
+         rowData.moduleBarcode = rowData.moduleBarcode || moduleBarcode || null;
 
         const columns = Object.keys(rowData).map(key => `[${key}]`).join(', ');
         const values = Object.values(rowData).map(value => (value !== null ? `'${value}'` : 'NULL')).join(', ');
