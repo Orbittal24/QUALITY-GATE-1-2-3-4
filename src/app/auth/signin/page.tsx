@@ -42,7 +42,12 @@ const SignIn: React.FC = () => {
         localStorage.setItem('auth', 'true');
         router.push("/pa_fg_station");
       }
-      
+
+        else if (username === "cdc_fg_station" && password === "123") {
+        localStorage.setItem('auth', 'true');
+        router.push("/cdc_fg_station");
+      }
+         
       else {
         console.error('Invalid login credentials');
         // Handle invalid login
