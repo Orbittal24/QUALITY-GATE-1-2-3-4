@@ -32,10 +32,18 @@ const SignIn: React.FC = () => {
 
         router.push("/tables");
 
-      } else if (username === "user123" && password === "user123") {
+      } 
+      else if (username === "user123" && password === "user123") {
         localStorage.setItem('auth', 'true');
         router.push("/chart");
-      } else {
+      }
+
+       else if (username === "pa_fg_station" && password === "123") {
+        localStorage.setItem('auth', 'true');
+        router.push("/pa_fg_station");
+      }
+      
+      else {
         console.error('Invalid login credentials');
         // Handle invalid login
       }
